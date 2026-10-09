@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Local secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor, OS, and generated temporary state
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
+*.tmp
+*.temp
+*.log
+*.swp
+
+# Build artifacts and local packaging
+build/
+dist/
+*.egg-info/
+*.zip
+
+# Cloud tooling state
+.aws-sam/
+.terraform/
+
+# Do not commit downloaded external billing extracts by default
+outputs/real_data/focus_sample_source.csv
+outputs/real_data/focus_data_table_source.csv.gz
+outputs/real_data/cur_mapped.csv
+outputs/real_data/negative_cost_review.csv
+outputs/real_data/mapping_rejects.csv
+outputs/real_data/regional_daily_metrics.csv
+outputs/real_data/regional_anomalies.csv
+outputs/real_data/regional_inefficiency_candidates.csv
