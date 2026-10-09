@@ -45,9 +45,8 @@ On systems with GNU Make, `make all` runs the same pipeline. Run quality tests w
 
 Numbers above come from the checked-in sample/source and the generated outputs below; rerun `python run_all.py` to reproduce synthetic figures. The real sample is fetched separately and is not used to support synthetic results.
 
-## Resume Claim Evidence
 
-| Resume claim area | Evidence and wording boundary |
+| claim area | Evidence |
 |---|---|
 | 14 months, 7 services, 4 regions; 33 service-day anomalies; two regional candidates, including EC2 `us-east-1` at +72.26% | [scripts/analyze.py](scripts/analyze.py), [scripts/analysis_metrics.py](scripts/analysis_metrics.py), [sql/trend_analysis.sql](sql/trend_analysis.sql), [outputs/synthetic/analysis_summary.json](outputs/synthetic/analysis_summary.json), [outputs/synthetic/regional_inefficiency_candidates.csv](outputs/synthetic/regional_inefficiency_candidates.csv), [outputs/synthetic/anomalies_detected.csv](outputs/synthetic/anomalies_detected.csv). This is a modeled candidate, not verified production waste. The pooled +40.20% is secondary and service/day-grain; the strict 33-to-1 funnel does not hold at regional grain (33-to-2 observed). |
 | ~$82K synthetic forecast, 0.567% agreement, backtest, Excel report | [outputs/synthetic/analysis_summary.json](outputs/synthetic/analysis_summary.json), [outputs/synthetic/forecast_backtest.csv](outputs/synthetic/forecast_backtest.csv), [reports/monthly_finops_report.xlsm](reports/monthly_finops_report.xlsm), [reports/monthly_finops_report.xlsx](reports/monthly_finops_report.xlsx), [macros/refresh_report.bas](macros/refresh_report.bas), [docs/excel_macro_howto.md](docs/excel_macro_howto.md). On this Windows build the XLSM has three native PivotTables (service x month, region, tag compliance by service) and an embedded refresh macro invoked during generation. Subsequent refresh is manual. On non-Windows/no-Excel builds the XLSX is formula-driven fallback. No reporting-effort reduction is measured. |
