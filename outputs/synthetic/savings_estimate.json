@@ -1,0 +1,11 @@
+{
+  "classification": "simulated opportunity; not realized savings",
+  "service": "AmazonEC2",
+  "region": "us-east-1",
+  "period_start": "2025-02-10",
+  "period_end": "2025-02-24",
+  "observed_event_cost_usd": 12632.38199,
+  "counterfactual_baseline_usd": 6791.745857142858,
+  "simulated_opportunity_usd": 5840.636132857142,
+  "assumption": "Per-day cost would have matched the preceding 14-day regional average; no causal proof or remediation is represented."
+}

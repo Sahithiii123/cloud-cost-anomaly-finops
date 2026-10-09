@@ -1,0 +1,9 @@
+{
+  "status": "published",
+  "reason": null,
+  "backtest_origins": 11,
+  "required_origins": 0,
+  "regression_mape_pct": 7.527622886381065,
+  "exponential_smoothing_mape_pct": 7.995090970133078,
+  "decision_rule": "For public data, publish only with >=3 rolling-origin 30-observation holdouts, both MAPEs <=20%, and method agreement <=15%. Otherwise forecast values are withheld."
+}

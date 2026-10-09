@@ -1,0 +1,3 @@
+usage_date,service,region,daily_cost,daily_usage,roll_mean,roll_std,z_score,cost_per_unit,cpu_roll_mean,cpu_roll_std,cpu_pct_dev,unit_cost_z_score,regional_cost_anomaly,positive_regional_cost_anomaly,regional_pct_candidate,regional_inefficiency_candidate
+2025-05-14,AWSLambda,ap-south-1,41.331520000000005,33.21,11.9295,0.682677620354816,43.06867417847761,1.2445504366154774,0.9683834055323768,0.10799439048730072,28.5183564180631,2.557234962269412,True,True,True,True
+2025-02-10,AmazonEC2,us-east-1,780.4136,457.72,438.70625714285717,51.491276322624394,6.636218156958024,1.7050021847417633,0.9897891752774977,0.09184457036357763,72.2591262188484,7.787210573613771,True,True,True,True

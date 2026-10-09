@@ -1,0 +1,11 @@
+service,region,untagged_cost
+AmazonEC2,us-east-1,34922.20293
+AmazonRDS,us-east-1,23415.5559
+AmazonEC2,eu-west-1,18822.0102
+AmazonEC2,us-west-2,17193.6722
+AmazonEC2,ap-south-1,10757.1402
+AmazonRDS,eu-west-1,10753.1036
+AmazonRDS,us-west-2,10017.0422
+AmazonS3,us-east-1,8151.55914
+AmazonRDS,ap-south-1,7432.5597
+AmazonEBS,us-east-1,5598.7924

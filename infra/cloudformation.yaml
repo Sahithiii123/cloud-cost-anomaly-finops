@@ -1,0 +1,283 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Proposed least-privilege FinOps billing data pipeline; not deployed by this repository.
+Parameters:
+  ArtifactBucket:
+    Type: String
+    Description: Existing private S3 bucket containing the packaged Lambda artifact.
+  LambdaArtifactKey:
+    Type: String
+    Description: S3 key for the packaged handler.py and shared scripts/data_quality.py.
+  DataQualityLayerArn:
+    Type: String
+    Description: Region-compatible Lambda layer ARN containing pinned pandas and numpy dependencies.
+  ProjectTag:
+    Type: String
+    Default: cloud-cost-anomaly-finops
+  OwnerTag:
+    Type: String
+    Default: finops
+Resources:
+  RawBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+  CuratedBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Sub '${AWS::StackName}-finops'
+        Description: CUR and FOCUS catalog for the FinOps pipeline
+        Parameters:
+          Project: !Ref ProjectTag
+          Owner: !Ref OwnerTag
+  GlueCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadRawAndUpdateProjectCatalog
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:ListBucket]
+                Resource: !GetAtt CuratedBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: [validated/, validated/*]
+              - Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub '${CuratedBucket.Arn}/validated/*'
+              - Effect: Allow
+                Action: [glue:GetDatabase, glue:GetTable, glue:GetTables, glue:CreateTable, glue:UpdateTable, glue:BatchCreatePartition, glue:GetPartition, glue:GetPartitions]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${AWS::StackName}-finops'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${AWS::StackName}-finops/*'
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/crawlers:*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+  GlueCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub '${AWS::StackName}-finops-raw'
+      Role: !GetAtt GlueCrawlerRole.Arn
+      DatabaseName: !Ref GlueDatabase
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${CuratedBucket}/validated/'
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DEPRECATE_IN_DATABASE
+      Tags:
+        Project: !Ref ProjectTag
+        Owner: !Ref OwnerTag
+  AthenaWorkGroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: !Sub '${AWS::StackName}-finops'
+      WorkGroupConfiguration:
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        ResultConfiguration:
+          OutputLocation: !Sub 's3://${CuratedBucket}/athena-results/'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+  TrendNamedQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: finops-monthly-trend
+      Description: Monthly cost trend query; resource tags are not supported by Athena NamedQuery.
+      Database: !Ref GlueDatabase
+      WorkGroup: !Ref AthenaWorkGroup
+      QueryString: !Sub |
+        SELECT date_trunc('month', CAST(usage_date AS timestamp)) AS usage_month,
+               service, SUM(unblended_cost) AS monthly_cost
+        FROM "${GlueDatabase}"."cur_sample"
+        GROUP BY 1, 2
+  TagComplianceNamedQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: finops-tag-compliance
+      Description: Tag spend compliance query; resource tags are not supported by Athena NamedQuery.
+      Database: !Ref GlueDatabase
+      WorkGroup: !Ref AthenaWorkGroup
+      QueryString: !Sub |
+        SELECT date_trunc('month', CAST(usage_date AS timestamp)) AS usage_month,
+               service, region,
+               100.0 * SUM(CASE WHEN Environment IS NOT NULL AND Owner IS NOT NULL
+                 AND CostCenter IS NOT NULL AND Application IS NOT NULL THEN unblended_cost ELSE 0 END)
+                 / NULLIF(SUM(unblended_cost), 0) AS spend_compliance_pct
+        FROM "${GlueDatabase}"."cur_sample"
+        GROUP BY 1, 2, 3
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadRawValidateWriteCurated
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:ListBucket]
+                Resource: !GetAtt RawBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: [incoming/, incoming/*]
+              - Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub '${RawBucket.Arn}/incoming/*'
+              - Effect: Allow
+                Action: [s3:PutObject]
+                Resource:
+                  - !Sub '${CuratedBucket.Arn}/quality/*'
+                  - !Sub '${CuratedBucket.Arn}/validated/*'
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-validator:*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+  ValidatorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-validator'
+      Runtime: python3.12
+      Handler: handler.handler
+      Role: !GetAtt LambdaRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: !Ref LambdaArtifactKey
+      Layers:
+        - !Ref DataQualityLayerArn
+      Environment:
+        Variables:
+          RAW_BUCKET: !Ref RawBucket
+          CURATED_BUCKET: !Ref CuratedBucket
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+  S3ObjectCreatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Validate new raw billing objects.
+      EventPattern:
+        source: [aws.s3]
+        detail-type: [Object Created]
+        detail:
+          bucket:
+            name: [!Ref RawBucket]
+          object:
+            key:
+              - prefix: incoming/
+      Targets:
+        - Arn: !GetAtt ValidatorFunction.Arn
+          Id: ValidateNewRawObject
+      State: ENABLED
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+  DailyValidationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Daily validation sweep of incoming billing objects.
+      ScheduleExpression: rate(1 day)
+      Targets:
+        - Arn: !GetAtt ValidatorFunction.Arn
+          Id: DailyValidationSweep
+      State: ENABLED
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+  AllowObjectRuleInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ValidatorFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt S3ObjectCreatedRule.Arn
+  AllowDailyRuleInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ValidatorFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailyValidationRule.Arn
+Outputs:
+  RawBucketName:
+    Value: !Ref RawBucket
+  CuratedBucketName:
+    Value: !Ref CuratedBucket
+  GlueDatabaseName:
+    Value: !Ref GlueDatabase
+  AthenaWorkGroupName:
+    Value: !Ref AthenaWorkGroup
